@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Caza las Frutas🐍🍓</title>
+<style>
+  :root{--bg:#f0f4ff;--grid:20;--size:22px}
+  body{margin:0;background:var(--bg);font-family:system-ui,sans-serif;
+       display:flex;flex-direction:column;align-items:center;justify-content:center;
+       height:100vh;user-select:none}
+  h1{margin:0 0 .5rem;color:#2f3e63;text-align:center}
+  #score{font-weight:bold;margin-bottom:1rem;color:#374151}
+  canvas{background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.1);outline:none}
+
+  /* diálogo ¡EXCELENTE! */
+  #excellent{
+    position:absolute;top:20%;
+    font-size:1.3rem;font-weight:bold;color:#ff0080;
+    background:rgba(255,255,255,.9);
+    padding:.35rem 1rem;border-radius:.75rem;
+    box-shadow:0 4px 12px rgba(0,0,0,.2);
+    opacity:0;pointer-events:none;
+    transition:opacity .6s ease,transform .4s ease;
+    transform:scale(.8);z-index:10}
+  #excellent.show{opacity:1;transform:scale(1.1)}
+
+  /* overlay fin de juego */
+  #overlay{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;background:rgba(255,255,255,.9);text-align:center}
+  #overlay p{margin:0 0 1rem;font-size:1.25rem;white-space:pre-line}
+  #restart{background:#1c7ed6;border:none;padding:.6rem 1.4rem;color:#fff;border-radius:8px;font-size:1rem;cursor:pointer;transition:background .2s}
+  #restart:hover{background:#155f9e}
+</style>
+</head>
+<body>
+  <h1>Caza las frutass</h1>
+  <div id="score">Puntos: 0</div>
+
+  <canvas id="game" width="440" height="440" tabindex="0"></canvas>
+
+  <!-- diálogo -->
+  <div id="excellent">¡EXCELENTEEEEEEEE! 🎉</div>
+  <!-- sonido -->
+  <audio id="excellentSound" preload="auto"
+         src="C:\Users\ferna\OneDrive\Escritorio\Arellano\VozArrellano.ogg"></audio>
+
+  <!-- overlay Game Over -->
+  <div id="overlay">
+    <p id="gameOverMsg"></p>
+    <button id="restart">Intentar de nuevo</button>
+  </div>
+
+<script>
+// polyfill roundRect ...
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){
+    const rr=Math.min(r,w/2,h/2);
+    this.beginPath();
+    this.moveTo(x+rr,y);
+    this.lineTo(x+w-rr,y);
+    this.quadraticCurveTo(x+w,y,x+w,y+rr);
+    this.lineTo(x+w,y+h-rr);
+    this.quadraticCurveTo(x+w,y+h,x+w-rr,y+h);
+    this.lineTo(x+rr,y+h);
+    this.quadraticCurveTo(x,y+h,x,y+h-rr);
+    this.lineTo(x,y+rr);
+    this.quadraticCurveTo(x,y,x+rr,y);
+    this.closePath();
+  };
+}
+
+/* ——— configuración ——— */
+const gridSize = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--grid'))||20;
+const cellSize = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--size'))||22;
+
+const canvas=document.getElementById('game');
+const ctx=canvas.getContext('2d');
+const scoreEl=document.getElementById('score');
+const overlay=document.getElementById('overlay');
+const msgEl=document.getElementById('gameOverMsg');
+const restartBtn=document.getElementById('restart');
+const excellentMsg=document.getElementById('excellent');
+const excellentSnd=document.getElementById('excellentSound');
+
+const fruits=[{emoji:"🍎",color:"#e63946"},
+              {emoji:"🍌",color:"#f1c40f"},
+              {emoji:"🍇",color:"#6a4c93"},
+              {emoji:"🍉",color:"#f72585"},
+              {emoji:"🍒",color:"#d00000"},
+              {emoji:"🥝",color:"#6ab04c"}];
+
+let snake,dir,nextDir,food,currentFruit,snakeColor,score,intervalId;
+
+const rand=max=>Math.floor(Math.random()*max);
+const equals=(a,b)=>a.x===b.x&&a.y===b.y;
+
+/* ——— inicio ——— */
+function resetGame(){
+  snake=[{x:10,y:10}];
+  dir={x:1,y:0};nextDir=dir;
+  snakeColor="#1c7ed6";
+  score=0;
+  scoreEl.textContent=`Puntos: ${score}`;
+  overlay.style.display='none';
+  placeFood();
+  clearInterval(intervalId);
+  intervalId=setInterval(loop,120);
+  canvas.focus();
+}
+
+function placeFood(){
+  do{food={x:rand(gridSize),y:rand(gridSize)}}
+  while(snake.some(p=>equals(p,food)));
+  currentFruit=fruits[rand(fruits.length)];
+  snakeColor=currentFruit.color;
+}
+
+/* ——— diálogo excelente ——— */
+function showExcellent(){
+  excellentMsg.classList.add('show');
+  excellentSnd.currentTime=0;
+  excellentSnd.play().catch(()=>{});
+  setTimeout(()=>excellentMsg.classList.remove('show'),1000);
+}
+
+/* ——— loop principal ——— */
+function loop(){
+  if((nextDir.x!==-dir.x)||(nextDir.y!==-dir.y)) dir=nextDir;
+  const head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+
+  if(head.x<0||head.x>=gridSize||head.y<0||head.y>=gridSize) return gameOver();
+  if(snake.some(p=>equals(p,head))) return gameOver();
+
+  snake.unshift(head);
+
+  if(equals(head,food)){
+    score++;
+    scoreEl.textContent=`Puntos: ${score}`;
+    placeFood();
+    if(score%5===0) showExcellent(); // ← sólo cada 5 frutas
+  }else{
+    snake.pop();
+  }
+  draw();
+}
+
+/* ——— dibujo ——— */
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.font=`${cellSize}px Arial`;
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  ctx.fillText(currentFruit.emoji,
+               food.x*cellSize+cellSize/2,
+               food.y*cellSize+cellSize/2);
+  ctx.fillStyle=snakeColor;
+  snake.forEach(p=>{
+    ctx.beginPath();
+    ctx.roundRect(p.x*cellSize,p.y*cellSize,cellSize,cellSize,6);
+    ctx.fill();
+  });
+}
+
+/* ——— fin del juego ——— */
+function gameOver(){
+  clearInterval(intervalId);
+  msgEl.textContent=`¡Ups! Comiste Demasiadas Frutas.\nResultado: ${score} frutas`;
+  overlay.style.display='flex';
+}
+
+/* ——— controles ——— */
+document.addEventListener('keydown',e=>{
+  switch(e.key){
+    case'ArrowUp':nextDir={x:0,y:-1};break;
+    case'ArrowDown':nextDir={x:0,y:1};break;
+    case'ArrowLeft':nextDir={x:-1,y:0};break;
+    case'ArrowRight':nextDir={x:1,y:0};break;
+  }
+});
+restartBtn.addEventListener('click',resetGame);
+document.addEventListener('keydown',e=>{
+  if(overlay.style.display==='flex'&&e.code==='Space') resetGame();
+});
+
+/* ——— start ——— */
+resetGame();
+</script>
+</body>
+</html>
